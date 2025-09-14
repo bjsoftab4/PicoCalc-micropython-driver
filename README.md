@@ -5,8 +5,7 @@ Forked from https://github.com/zenodante/PicoCalc-micropython-driver
 For more information, see the original web page.
 
 ## Difference from orignal
-Add RGB565 support for VT100 terminal
-(Under develop)
+Add RGB565 support for VT100 terminal (Tested on Pico2W)
 
 ## Build Instructions
 In my system something is wrong.\
