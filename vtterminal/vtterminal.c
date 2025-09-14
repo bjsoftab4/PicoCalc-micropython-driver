@@ -16,6 +16,8 @@
 #include "pico/stdlib.h"
 #include "hardware/timer.h"
 
+#define DISPLAY_WIDTH SC_PIXEL_WIDTH
+#define DISPLAY_HEIGHT SC_PIXEL_HEIGHT
 
 uint8_t* fontTop;
                
@@ -204,13 +206,73 @@ static void unknownSequence(uint8_t m, char c) ;
 static void cursorForward(int16_t v);
 static void cursorBackward(int16_t v);
 
+static uint8_t pixel_mode;
+static const uint16_t defaultLUT[16] = {
+    0x0000, 0x0080, 0x0004, 0x0084, 0x1000, 0x1080, 0x1004, 0x18C6,
+    0x1084, 0x00F8, 0xE007, 0xE0FF, 0x1F00, 0x1FF8, 0xFF07, 0xFFFF
+};
+#define FRAMEBUF_MVLSB    (0)
+#define FRAMEBUF_RGB565   (1)
+#define FRAMEBUF_GS2_HMSB (5)
+#define FRAMEBUF_GS4_HMSB (2)
+#define FRAMEBUF_GS8      (6)
+#define FRAMEBUF_MHLSB    (3)
+#define FRAMEBUF_MHMSB    (4)
+static void setpixelRGB565(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
+static void setpixelLUT8(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
+static void setpixelLUT4(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
+static void setpixelLUT2(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
+static void setpixelLUT1(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
+
+static void setpixelRGB565(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
+  ((uint16_t *)frameBuff)[x + DISPLAY_WIDTH*y]= defaultLUT[color & 0xf];
+}
+
+static void setpixelLUT8(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
+  ((uint8_t *)frameBuff)[x + DISPLAY_WIDTH*y]= (uint8_t)color;
+}
+
+static void setpixelLUT4(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
+  uint8_t *pixel = &((uint8_t *)frameBuff)[(x + (DISPLAY_WIDTH*y))>>1];
+
+  if (x&0x01) {
+    *pixel = ((uint8_t)color & 0x0f) | (*pixel & 0xf0);
+  } else {
+    *pixel = ((uint8_t)color << 4) | (*pixel & 0x0f);
+  }
+}
+
+static void setpixelLUT2(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
+  uint8_t *pixel = &((uint8_t *)frameBuff)[(x + (DISPLAY_WIDTH*y))>>2];
+  uint8_t shift = (x & 0x3) << 1;
+  uint8_t mask = 0x3 << shift;
+  color = ((uint8_t)color & 0x3) << shift;
+  *pixel = color | (*pixel & (~mask));
+}
+
+static void setpixelLUT1(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
+  size_t index = (x + y * DISPLAY_WIDTH) >> 3;
+  unsigned int offset =  x & 0x07;
+  ((uint8_t *)frameBuff)[index] = (((uint8_t *)frameBuff)[index] & ~(0x01 << offset)) | ((color != 0) << offset);
+}
 static void setpixel(uint8_t *fb,int32_t x, int32_t y,uint8_t color){
-    uint8_t *pixel = &((uint8_t *)fb)[(x + (SC_PIXEL_WIDTH*y))>>1];
-  
-    if (x&0x01) {
-      *pixel = ((uint8_t)color & 0x0f) | (*pixel & 0xf0);
-    } else {
-      *pixel = ((uint8_t)color << 4) | (*pixel & 0x0f);
+    switch (pixel_mode){
+      case FRAMEBUF_RGB565: //565
+        setpixelRGB565(fb, x, y, color);
+        break;
+      default:
+      case FRAMEBUF_GS4_HMSB: //16 color
+        setpixelLUT4(fb, x, y, color);
+        break;
+      case FRAMEBUF_MHMSB: //2 color
+        setpixelLUT1(fb, x, y, color);
+        break;
+      case FRAMEBUF_GS2_HMSB: //4 color
+        setpixelLUT2(fb, x, y, color);
+        break;
+      case FRAMEBUF_GS8: //256 color
+        setpixelLUT8(fb, x, y, color);
+        break;
     }
   }
 static void sc_updateChar(uint16_t x, uint16_t y) {
@@ -1516,8 +1578,42 @@ static void scroll_framebuffer(uint8_t *fb, int scroll_y1, int scroll_y2, int n,
     }
 }
 */
-static void fill_rect_4bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+static void fill_rect_16bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+	
+    int row_bytes = SC_PIXEL_WIDTH << 1;  
+	uint16_t fill_word = defaultLUT[color & 0xf];
+    for (int row = y; row < y + h; row++) {
+    	uint16_t *row_ptr = (uint16_t *)(fb + row * row_bytes);
+        int pos = x;
+        int pixels_to_fill = w;
+        uint16_t *ptr = row_ptr + pos;
+        int full_words = pixels_to_fill;      
+        while (full_words--) {
+            *ptr++ = fill_word;
+        }
+    }
+}
 
+static void fill_rect_4bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+    switch (pixel_mode){
+      case FRAMEBUF_RGB565: //565
+        fill_rect_16bpp(fb, x, y, w, h, color);
+    	return;
+        break;
+      default:
+      case FRAMEBUF_GS4_HMSB: //16 color
+        break;
+      case FRAMEBUF_MHMSB: //2 color
+        //fill_rect_1bpp(fb, x, y, w, h, color);
+        break;
+      case FRAMEBUF_GS2_HMSB: //4 color
+        //fill_rect_2bpp(fb, x, y, w, h, color);
+        break;
+      case FRAMEBUF_GS8: //256 color
+        //fill_rect_8bpp(fb, x, y, w, h, color);
+        break;
+    }
+	
     int row_bytes = SC_PIXEL_WIDTH >> 1;  
     uint8_t fill_byte = (color << 4) | (color & 0x0F);
     for (int row = y; row < y + h; row++) {
@@ -1555,6 +1651,24 @@ static mp_obj_t vtterminal_init(mp_obj_t fb_obj){
     mp_buffer_info_t buf_info;
     mp_get_buffer_raise(fb_obj, &buf_info, MP_BUFFER_READ);
     fb=(uint8_t *)buf_info.buf;
+	switch( (int)buf_info.len ) {
+		case DISPLAY_WIDTH * DISPLAY_HEIGHT * 2:
+			pixel_mode = FRAMEBUF_RGB565;
+			break;
+		case DISPLAY_WIDTH * DISPLAY_HEIGHT:
+			pixel_mode = FRAMEBUF_GS8;
+			break;
+		case DISPLAY_WIDTH * DISPLAY_HEIGHT /2:
+		default:
+			pixel_mode = FRAMEBUF_GS4_HMSB;
+			break;
+		case DISPLAY_WIDTH * DISPLAY_HEIGHT/4:
+			pixel_mode = FRAMEBUF_GS2_HMSB;
+			break;
+		case DISPLAY_WIDTH * DISPLAY_HEIGHT/8:
+			pixel_mode = FRAMEBUF_MHMSB;
+			break;
+	}
 
     currentTextTable=G0TABLE;
     resetToInitialState();
