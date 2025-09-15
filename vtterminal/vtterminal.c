@@ -209,14 +209,12 @@ static void cursorBackward(int16_t v);
 static uint8_t pixel_mode;
 static const uint16_t defaultLUT[16] = {
     0x0000, 0x0080, 0x0004, 0x0084, 0x1000, 0x1080, 0x1004, 0x18C6,
-    0x1084, 0x00F8, 0xE007, 0xE0FF, 0x1F00, 0x1FF8, 0xFF07, 0xFFFF
+    0x1084, 0x00F8, 0xE007, 0xE0FF, 0x1F00, 0x1FF8, 0xFF07, 0xFFFF,
 };
-#define FRAMEBUF_MVLSB    (0)
 #define FRAMEBUF_RGB565   (1)
 #define FRAMEBUF_GS2_HMSB (5)
 #define FRAMEBUF_GS4_HMSB (2)
 #define FRAMEBUF_GS8      (6)
-#define FRAMEBUF_MHLSB    (3)
 #define FRAMEBUF_MHMSB    (4)
 static void setpixelRGB565(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
 static void setpixelLUT8(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
@@ -225,7 +223,7 @@ static void setpixelLUT2(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
 static void setpixelLUT1(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
 
 static void setpixelRGB565(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
-  ((uint16_t *)frameBuff)[x + DISPLAY_WIDTH*y]= defaultLUT[color & 0xf];
+  ((uint16_t *)frameBuff)[x + DISPLAY_WIDTH*y]= defaultLUT[color & 0x0f];
 }
 
 static void setpixelLUT8(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
@@ -1326,6 +1324,12 @@ static void selectGraphicRendition(int16_t *vals, int16_t nVals) {
               } else if (v >= 40 && v <= 47) {
                 // background color
                 cColor.Color.Background = v - 40;
+              } else if (v >= 90 && v <= 97) {
+                //front color
+                cColor.Color.Foreground = v - 90 + 8;
+              } else if (v >= 100 && v <= 107) {
+                // background color
+                cColor.Color.Background = v - 100 + 8;
               }
               break;
           }
@@ -1594,24 +1598,105 @@ static void fill_rect_16bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t co
     }
 }
 
+	
+static void fill_rect_8bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+	
+    int row_bytes = SC_PIXEL_WIDTH;  
+    for (int row = y; row < y + h; row++) {
+    	uint8_t *row_ptr = (uint8_t *)(fb + row * row_bytes);
+        int pos = x;
+        int pixels_to_fill = w;
+        uint8_t *ptr = row_ptr + pos;
+        while (pixels_to_fill--) {
+            *ptr++ = color;
+        }
+    }
+}
+
+
+static void fill_rect_2bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+    int row_bytes = SC_PIXEL_WIDTH >> 2;  
+    int pos = x;
+	int skippix = (pos & 0x3);
+	uint8_t maskbit = 0xff << (skippix * 2);	// pos =1 の時 pixel xccc にセットする  bitmask は色をセットする部分 1110 （エンディアン逆)
+	uint8_t cbit = (color >> 2)& 0x3;
+	uint8_t fill_byte = (cbit << 6) |(cbit << 4) | (cbit << 2) | cbit;
+	uint8_t fillbit = fill_byte & maskbit;
+
+    int pixels_to_fill = w;
+	pixels_to_fill -= skippix;
+    int remaining_pixels = pixels_to_fill & 3; 
+
+	for (int row = y; row < y + h; row++) {
+        uint8_t *row_ptr = fb + row * row_bytes;
+        uint8_t *ptr = row_ptr + (pos >> 2);
+
+		if( skippix != 0) {
+            *ptr = (*ptr & ~(maskbit)) | fillbit;
+			ptr ++;
+		}
+		int full_bytes = pixels_to_fill >> 2;      
+        while (full_bytes > 0) {
+            *ptr++ = fill_byte;
+        	full_bytes -= 1;
+        }
+        if (remaining_pixels) {
+            uint8_t maskbit2 = 0xff >> ((4-remaining_pixels) * 2);
+            *ptr = (*ptr & ~(maskbit2)) | (fill_byte & maskbit2);
+        }
+    }
+}
+
+static void fill_rect_1bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+    int row_bytes = SC_PIXEL_WIDTH >> 3;  
+    int pos = x;
+	int skippix = (pos & 0x7);
+	uint8_t maskbit = 0xff << skippix;
+	uint8_t fill_byte = 0;
+	if (color != 0) fill_byte = 0xff;
+	uint8_t fillbit = fill_byte & maskbit;
+
+    int pixels_to_fill = w;
+	pixels_to_fill -= skippix;
+    int remaining_pixels = pixels_to_fill & 7; 
+
+	for (int row = y; row < y + h; row++) {
+        uint8_t *row_ptr = fb + row * row_bytes;
+        uint8_t *ptr = row_ptr + (pos >> 3);
+
+		if( skippix != 0) {
+            *ptr = (*ptr & ~(maskbit)) | fillbit;
+			ptr ++;
+		}
+		int full_bytes = pixels_to_fill >> 3;      
+        while (full_bytes > 0) {
+            *ptr++ = fill_byte;
+        	full_bytes -= 1;
+        }
+        if (remaining_pixels) {
+            uint8_t maskbit2 = 0xff >> (8-remaining_pixels);
+            *ptr = (*ptr & ~(maskbit2)) | (fill_byte & maskbit2);
+        }
+    }
+}
+
 static void fill_rect_4bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
     switch (pixel_mode){
       case FRAMEBUF_RGB565: //565
         fill_rect_16bpp(fb, x, y, w, h, color);
     	return;
-        break;
       default:
       case FRAMEBUF_GS4_HMSB: //16 color
         break;
       case FRAMEBUF_MHMSB: //2 color
-        //fill_rect_1bpp(fb, x, y, w, h, color);
-        break;
+        fill_rect_1bpp(fb, x, y, w, h, color);
+    	return;
       case FRAMEBUF_GS2_HMSB: //4 color
-        //fill_rect_2bpp(fb, x, y, w, h, color);
-        break;
+        fill_rect_2bpp(fb, x, y, w, h, color);
+    	return;
       case FRAMEBUF_GS8: //256 color
-        //fill_rect_8bpp(fb, x, y, w, h, color);
-        break;
+        fill_rect_8bpp(fb, x, y, w, h, color);
+    	return;
     }
 	
     int row_bytes = SC_PIXEL_WIDTH >> 1;  
