@@ -8,7 +8,7 @@ For more information, see the original web page.
 Add RGB565 support for VT100 terminal (Tested on Pico2W)
 
 ## Fixed glitchs
-Improve stability when uploading file with Thonny
+Improve stability when uploading file with Thonny.\
 To speed up SDcard (SDcard baudrate is set correctly)
 
 ## Build Instructions
