@@ -123,7 +123,7 @@ static void core1_main(void);
 static void core1_singleShot(void);
 
 static void core1_main(void) {
-  //multicore_lockout_victim_init();
+  multicore_lockout_victim_init();
   //static int frame = 0;
   while (1) {
     //if (++frame % 100 == 0) {

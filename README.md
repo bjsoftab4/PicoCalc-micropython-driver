@@ -7,9 +7,13 @@ For more information, see the original web page.
 ## Difference from orignal
 Add RGB565 support for VT100 terminal (Tested on Pico2W)
 
+## Fixed glitchs
+Improve stability when uploading file with Thonny
+To speed up SDcard (SDcard baudrate is set correctly)
+
 ## Build Instructions
-In my system something is wrong.\
-I added micropython.cmake in parent directory.  And
+In my system something is going wrong with original instruction.\
+I added micropython.cmake in parent directory.  And use make insted of cmake.
 ```sh
 cd micropython/ports/rp2
 make USER_C_MODULES="Path/To/PicoCalc-micropython-driver/micropython.cmake" \
@@ -26,13 +30,29 @@ Supported `TARGET_BOARD` values:
 ## Features (Modified)
 
 ### VT100 Emulator Mode
-- Runs in **16-bit color ** mode.  Change boot.py as followed.
+- Original runs in **16-bit color ** mode.  When Runs in 16bit, change boot.py as followed.
 ```sh
 import framebuf
 try:
 #    pc_display = PicoDisplay(320, 320)
     pc_display = PicoDisplay(320, 320,framebuf.RGB565)
 ```
+
+---
+
+## Fixed glitches
+### Improve stability at writing FLASH
+- To write FLASH, core1 must be stopped with calling multicore_lockout_victim_init().  But the function was commented in core1_main() in picocalcdisplay.c
+
+---
+
+### SDcard baudrate
+- Class PicoSD in picocalc.py was not pass baudrate to sdcard.py.  When you want to change baudrate from default, Change boot.py as followed.
+```sh
+    #pc_sd = PicoSD()
+    pc_sd = PicoSD(baudrate=5_000_000)
+```
+
 ---
 
 ## Credits

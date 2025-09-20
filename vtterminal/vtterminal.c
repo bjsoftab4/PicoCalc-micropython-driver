@@ -16,9 +16,6 @@
 #include "pico/stdlib.h"
 #include "hardware/timer.h"
 
-#define DISPLAY_WIDTH SC_PIXEL_WIDTH
-#define DISPLAY_HEIGHT SC_PIXEL_HEIGHT
-
 uint8_t* fontTop;
                
 uint16_t M_TOP = 0;                     
@@ -206,6 +203,7 @@ static void unknownSequence(uint8_t m, char c) ;
 static void cursorForward(int16_t v);
 static void cursorBackward(int16_t v);
 
+//	add display mode for RGB565 and more
 static uint8_t pixel_mode;
 static const uint16_t defaultLUT[16] = {
     0x0000, 0x0080, 0x0004, 0x0084, 0x1000, 0x1080, 0x1004, 0x18C6,
@@ -223,15 +221,15 @@ static void setpixelLUT2(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
 static void setpixelLUT1(uint8_t *fb,int32_t x, int32_t y,uint16_t color);
 
 static void setpixelRGB565(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
-  ((uint16_t *)frameBuff)[x + DISPLAY_WIDTH*y]= defaultLUT[color & 0x0f];
+  ((uint16_t *)frameBuff)[x + SC_PIXEL_WIDTH*y]= defaultLUT[color & 0x0f];
 }
 
 static void setpixelLUT8(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
-  ((uint8_t *)frameBuff)[x + DISPLAY_WIDTH*y]= (uint8_t)color;
+  ((uint8_t *)frameBuff)[x + SC_PIXEL_WIDTH*y]= (uint8_t)color;
 }
 
 static void setpixelLUT4(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
-  uint8_t *pixel = &((uint8_t *)frameBuff)[(x + (DISPLAY_WIDTH*y))>>1];
+  uint8_t *pixel = &((uint8_t *)frameBuff)[(x + (SC_PIXEL_WIDTH*y))>>1];
 
   if (x&0x01) {
     *pixel = ((uint8_t)color & 0x0f) | (*pixel & 0xf0);
@@ -241,7 +239,7 @@ static void setpixelLUT4(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color)
 }
 
 static void setpixelLUT2(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
-  uint8_t *pixel = &((uint8_t *)frameBuff)[(x + (DISPLAY_WIDTH*y))>>2];
+  uint8_t *pixel = &((uint8_t *)frameBuff)[(x + (SC_PIXEL_WIDTH*y))>>2];
   uint8_t shift = (x & 0x3) << 1;
   uint8_t mask = 0x3 << shift;
   color = ((uint8_t)color & 0x3) << shift;
@@ -249,7 +247,7 @@ static void setpixelLUT2(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color)
 }
 
 static void setpixelLUT1(uint8_t *frameBuff,int32_t x, int32_t y,uint16_t color){
-  size_t index = (x + y * DISPLAY_WIDTH) >> 3;
+  size_t index = (x + y * SC_PIXEL_WIDTH) >> 3;
   unsigned int offset =  x & 0x07;
   ((uint8_t *)frameBuff)[index] = (((uint8_t *)frameBuff)[index] & ~(0x01 << offset)) | ((color != 0) << offset);
 }
@@ -1324,6 +1322,7 @@ static void selectGraphicRendition(int16_t *vals, int16_t nVals) {
               } else if (v >= 40 && v <= 47) {
                 // background color
                 cColor.Color.Background = v - 40;
+                // add 16 colors for VT100 ESC sequence
               } else if (v >= 90 && v <= 97) {
                 //front color
                 cColor.Color.Foreground = v - 90 + 8;
@@ -1582,6 +1581,7 @@ static void scroll_framebuffer(uint8_t *fb, int scroll_y1, int scroll_y2, int n,
     }
 }
 */
+//	add display mode for RGB565 and more
 static void fill_rect_16bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
 	
     int row_bytes = SC_PIXEL_WIDTH << 1;  
@@ -1736,21 +1736,22 @@ static mp_obj_t vtterminal_init(mp_obj_t fb_obj){
     mp_buffer_info_t buf_info;
     mp_get_buffer_raise(fb_obj, &buf_info, MP_BUFFER_READ);
     fb=(uint8_t *)buf_info.buf;
+    // Detect display mode RGB565 and more
 	switch( (int)buf_info.len ) {
-		case DISPLAY_WIDTH * DISPLAY_HEIGHT * 2:
+		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT * 2:
 			pixel_mode = FRAMEBUF_RGB565;
 			break;
-		case DISPLAY_WIDTH * DISPLAY_HEIGHT:
+		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT:
 			pixel_mode = FRAMEBUF_GS8;
 			break;
-		case DISPLAY_WIDTH * DISPLAY_HEIGHT /2:
+		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT /2:
 		default:
 			pixel_mode = FRAMEBUF_GS4_HMSB;
 			break;
-		case DISPLAY_WIDTH * DISPLAY_HEIGHT/4:
+		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT/4:
 			pixel_mode = FRAMEBUF_GS2_HMSB;
 			break;
-		case DISPLAY_WIDTH * DISPLAY_HEIGHT/8:
+		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT/8:
 			pixel_mode = FRAMEBUF_MHMSB;
 			break;
 	}
