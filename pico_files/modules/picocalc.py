@@ -374,7 +374,8 @@ class PicoSD:
                                 sck=machine.Pin(self.sck_pin),
                                 mosi=machine.Pin(self.mosi_pin),
                                 miso=machine.Pin(self.miso_pin)),
-                    machine.Pin(self.cs_pin)
+                    machine.Pin(self.cs_pin),
+                    baudrate = self.baudrate
                 )
                 uos.mount(self.sd, self.mount_point)
                 print(f"{Fore.GREEN}SD card mounted successfully at", self.mount_point)
