@@ -378,6 +378,10 @@ static mp_obj_t pd_setLUT(mp_obj_t LUT_obj){
 static MP_DEFINE_CONST_FUN_OBJ_1(setLUT_obj, pd_setLUT);
 
 static mp_obj_t startAutoUpdate(void){
+    if( JPEG_override == 1) {
+      return mp_const_true;
+    }
+ 
   autoUpdate = true;
   multicore_reset_core1();
   multicore_launch_core1_with_stack(core1_main, core1_stack, CORE1_STACK_SIZE);
@@ -387,6 +391,9 @@ static MP_DEFINE_CONST_FUN_OBJ_0(startAutoUpdate_obj, startAutoUpdate);
 
 
 static mp_obj_t stopAutoUpdate(void){
+  if( JPEG_override == 1) {
+    return mp_const_true;
+  }
   autoUpdate = false;
   multicore_reset_core1();
   //wait until possible dma is done
@@ -421,13 +428,14 @@ static void command(uint8_t com, size_t len, const char *data) {
 
 
 static mp_obj_t pd_update(mp_obj_t core){
+    if( JPEG_override == 1) {
+      return mp_const_true;
+    }
     int coreNum = mp_obj_get_int(core);
     if (autoUpdate==false){//only work when autoUpdate is false
       if (coreNum == 0){
           oneShotisDone=false;
-          if( JPEG_override == 0) {
-            pColorUpdate(frameBuff,DISPLAY_HEIGHT*DISPLAY_WIDTH, LUT);
-          }
+          pColorUpdate(frameBuff,DISPLAY_HEIGHT*DISPLAY_WIDTH, LUT);
           oneShotisDone=true;
       }else{
         //single shot core 1 update
@@ -453,7 +461,7 @@ static MP_DEFINE_CONST_FUN_OBJ_0(pd_isScreenUpdateDone_obj, pd_isScreenUpdateDon
 /* JPEGDEC support functions.  start */
 #define DISPLAY_HEIGHT2 (480)
 
-static uint8_t JPEG_mode = 0;
+static uint8_t JPEG_mode = 255;
 static uint8_t JPEG_Drawpage = 0;
 static uint8_t JPEG_Viewpage = 0;
 static uint8_t JPEG_dma = 0;
@@ -524,18 +532,15 @@ static void JPEGCleanVRAM() {
 
 #define JPEGVIEWTYPE (0) // 0: top, 1: center
 
-void JPEGSetViewPage(uint8_t newmode) {
+void JPEGSetViewPage(uint8_t newpage) {
 	JPEGWaitDma();
-	if( newmode == 0) {
-		if( JPEG_mode != 0) {		// return to normal display
-			command(DISPOFF,0,NULL);
-			command(NORON,0,NULL);
-			command(DISPON,0,NULL);
-			JPEG_Viewpage = 0;
-			JPEG_mode = 0;
-		}
-	} else {
-		if( JPEG_mode == 0) {		// change to partial display
+	if( newpage == 0) {		// return to normal display
+		command(DISPOFF,0,NULL);
+		command(NORON,0,NULL);
+		command(DISPON,0,NULL);
+		JPEG_Viewpage = 0;
+	} else {	// change to partial display
+		if( JPEG_mode != 1) {
 			JPEGCleanVRAM();
 			command(VSCRDEF, 6, "\x00\x00\x01\xF0\x00\x00");    // 0,480,0
 #if JPEGVIEWTYPE == 0
@@ -544,9 +549,8 @@ void JPEGSetViewPage(uint8_t newmode) {
 			command(PLTAR,4,"\x00\x28\x01\x17");                // 40,279
 #endif
 			command(PTLON,0,NULL);
-			JPEG_mode = 1;
 		}
-		if( newmode == 1) {
+		if( newpage == 1) {
 #if JPEGVIEWTYPE == 0
 			command(VSCRSADD, 2, "\x00\x0");                    // for page1
 #else
@@ -582,7 +586,7 @@ void JPEGModeStart(uint8_t mode) {
 			JPEGSetViewPage(0);
 			JPEG_mode = 0;
 		} else {
-			if( JPEGGetViewPage() == 0){	// initialize view page
+			if( JPEG_mode == 255) {		// initialize view page
 				JPEGSetViewPage(1);
 				JPEGSetDrawPage(1);
 			}
