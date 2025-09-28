@@ -102,7 +102,7 @@ static const uint16_t defaultLUT[256] = {
 };//standar vt100 color table with byte sweep
 
 //static uint8_t core1_override = 0;
-static uint8_t JPEG_override = 0;
+volatile uint8_t JPEG_override = 0;
 static void Write_dma(const uint8_t *src, size_t len);
 static void command(uint8_t com, size_t len, const char *data) ;
 void RGB565Update(uint8_t *frameBuff,uint32_t length, const uint16_t *LUT);
@@ -461,10 +461,10 @@ static MP_DEFINE_CONST_FUN_OBJ_0(pd_isScreenUpdateDone_obj, pd_isScreenUpdateDon
 /* JPEGDEC support functions.  start */
 #define DISPLAY_HEIGHT2 (480)
 
-static uint8_t JPEG_mode = 255;
-static uint8_t JPEG_Drawpage = 0;
-static uint8_t JPEG_Viewpage = 0;
-static uint8_t JPEG_dma = 0;
+volatile uint8_t JPEG_mode = 255;
+volatile uint8_t JPEG_Drawpage = 0;
+volatile uint8_t JPEG_Viewpage = 0;
+volatile uint8_t JPEG_dma = 0;
 
 static void JPEGSetWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
 	if (x0 > x1 || (y0 > y1)) {
@@ -494,15 +494,19 @@ void JPEGSetDrawPage(uint8_t page) { // page must be 1 or 2
 uint8_t JPEGGetViewPage() {
 	return JPEG_Viewpage;
 }
-static void JPEGWaitDma(){
-	if ( JPEG_dma != 0) {
+uint8_t JPEGGetDrawPage() {
+	return JPEG_Drawpage;
+}
+
+void JPEGWaitDma(){
+//	if ( JPEG_dma != 0) {
 		while (dma_channel_is_busy(st_dma)) {};
 	    while (spi_get_hw(SPI_DISP)->sr & SPI_SSPSR_BSY_BITS) {
 	      tight_loop_contents();  
 	    }
 	    gpio_put(CS_PIN, 1);
 		JPEG_dma = 0;
-	}
+//	}
 }
 static void JPEGCleanVRAM() {
 	command(CASET,4,"\x00\x00\x01\x3F");    // CA 0-320
@@ -525,8 +529,8 @@ static void JPEGCleanVRAM() {
     while (spi_get_hw(SPI_DISP)->sr & SPI_SSPSR_BSY_BITS) {
       tight_loop_contents();  
     }
-    command(RASET,4,"\x00\x00\x01\x3F");    // RA 0-320
     gpio_put(CS_PIN, 1);    
+    command(RASET,4,"\x00\x00\x01\x3F");    // RA 0-320
 }
 
 
@@ -534,39 +538,24 @@ static void JPEGCleanVRAM() {
 
 void JPEGSetViewPage(uint8_t newpage) {
 	JPEGWaitDma();
-	if( newpage == 0) {		// return to normal display
-		command(DISPOFF,0,NULL);
-		command(NORON,0,NULL);
-		command(DISPON,0,NULL);
-		JPEG_Viewpage = 0;
-	} else {	// change to partial display
-		if( JPEG_mode != 1) {
-			JPEGCleanVRAM();
-			command(VSCRDEF, 6, "\x00\x00\x01\xF0\x00\x00");    // 0,480,0
-#if JPEGVIEWTYPE == 0
-			command(PLTAR,4,"\x00\x00\x00\xEF");                // 0,239
-#else
-			command(PLTAR,4,"\x00\x28\x01\x17");                // 40,279
-#endif
-			command(PTLON,0,NULL);
-		}
-		if( newpage == 1) {
-#if JPEGVIEWTYPE == 0
-			command(VSCRSADD, 2, "\x00\x0");                    // for page1
-#else
-			command(VSCRSADD, 2, "\x01\xb8");                   // -40line for page1
-#endif
-			JPEG_Viewpage = 1;
-		} else {
-#if JPEGVIEWTYPE == 0
-			command(VSCRSADD, 2, "\x00\xf0");                   // 240 line for page2
-#else
-			command(VSCRSADD, 2, "\x00\xc8");                   // 240-40 line for page2
-#endif
-			JPEG_Viewpage = 2;
-		}
-	}
 
+	command(VSCRDEF, 6, "\x00\x00\x01\xE0\x00\x00");    // 0,480,0
+
+	if( newpage == 1) {
+#if JPEGVIEWTYPE == 0
+		command(VSCRSADD, 2, "\x00\x0");                    // for page1
+#else
+		command(VSCRSADD, 2, "\x01\xb8");                   // -40line for page1
+#endif
+		JPEG_Viewpage = 1;
+	} else {
+#if JPEGVIEWTYPE == 0
+		command(VSCRSADD, 2, "\x00\xf0");                   // 240 line for page2
+#else
+		command(VSCRSADD, 2, "\x00\xc8");                   // 240-40 line for page2
+#endif
+		JPEG_Viewpage = 2;
+	}
 }
 
 
@@ -574,28 +563,46 @@ void JPEGModeEnd() {
 	JPEGWaitDma();
 	command(CASET,4,"\x00\x00\x01\x3F");	// default
     command(RASET,4,"\x00\x00\x01\x3F");	// default
+	command(DISPOFF,0,NULL);
+	command(NORON,0,NULL);
+	command(DISPON,0,NULL);
 	JPEG_mode = 0;
 	JPEG_override = 0;
+}
+
+void JPEGModeChange(uint8_t mode) {
+	JPEGWaitDma();
+	if( JPEG_override == 0) {
+		JPEG_override = 1;
+	}
+	if( mode == 0){
+		command(DISPOFF,0,NULL);
+		command(NORON,0,NULL);
+		command(DISPON,0,NULL);
+		JPEG_Viewpage = 0;
+		JPEG_mode = 0;
+	} else {
+		command(VSCRDEF, 6, "\x00\x00\x01\xF0\x00\x00");    // 0,480,0
+#if JPEGVIEWTYPE == 0
+		command(PLTAR,4,"\x00\x00\x00\xEF");                // 0,239
+#else
+		command(PLTAR,4,"\x00\x28\x01\x17");                // 40,279
+#endif
+		command(PTLON,0,NULL);
+		JPEG_mode = 1;
+	}
 }
 
 void JPEGModeStart(uint8_t mode) {
 	JPEGWaitDma();
 	if( JPEG_override == 0) {
 		JPEG_override = 1;
-		if( mode == 0){
-			JPEGSetViewPage(0);
-			JPEG_mode = 0;
-		} else {
-			if( JPEG_mode == 255) {		// initialize view page
-				JPEGSetViewPage(1);
-				JPEGSetDrawPage(1);
-			}
-			JPEG_mode = 1;
-		}
 	}
-
+	JPEGModeChange(mode);
+	JPEGCleanVRAM();	// initialize view page
+	JPEGSetViewPage(1);
+	JPEGSetDrawPage(1);
 }
-
 void JPEGUpdate(uint16_t *pBuf, uint16_t x,  uint16_t y,  uint16_t w,  uint16_t h) {
 	JPEGWaitDma();
 
@@ -626,10 +633,13 @@ void JPEGUpdate(uint16_t *pBuf, uint16_t x,  uint16_t y,  uint16_t w,  uint16_t 
     Write_dma((const uint8_t*)pBuf, bsize);
 	JPEG_dma = 1;
 }
+
 void JPEGGetDisp(uint16_t *w, uint16_t *h){
 	*w = DISPLAY_WIDTH;
 	*h = DISPLAY_HEIGHT;
 }
+
+
 /* JPEGDEC support functions.  end */
 
 void RGB565Update(uint8_t *frameBuff,uint32_t length,const uint16_t *LUT) {
