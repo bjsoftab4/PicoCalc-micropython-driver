@@ -38,12 +38,6 @@
 #define    VMCTR1    0xC5
 #define    PGAMCTRL  0xE0
 #define    NGAMCTRL  0xE1
-#define    PTLON     0x12   //JPEGDEC
-#define    NORON     0x13   //JPEGDEC
-#define    DISPOFF   0x28   //JPEGDEC
-#define    PLTAR     0x30   //JPEGDEC
-#define    VSCRDEF   0x33   //JPEGDEC
-#define    VSCRSADD  0x37   //JPEGDEC
 #define CORE1_STACK_SIZE 1024
 uint32_t core1_stack[CORE1_STACK_SIZE];
 
@@ -101,8 +95,7 @@ static const uint16_t defaultLUT[256] = {
     0x55AD, 0x96B5, 0xF7BD, 0x38C6, 0x9AD6, 0xDBDE, 0x3CE7, 0x7DEF,
 };//standar vt100 color table with byte sweep
 
-//static uint8_t core1_override = 0;
-static uint8_t JPEG_override = 0;
+
 static void Write_dma(const uint8_t *src, size_t len);
 static void command(uint8_t com, size_t len, const char *data) ;
 void RGB565Update(uint8_t *frameBuff,uint32_t length, const uint16_t *LUT);
@@ -130,26 +123,22 @@ static void core1_main(void);
 static void core1_singleShot(void);
 
 static void core1_main(void) {
-  multicore_lockout_victim_init();
+  //multicore_lockout_victim_init();
   //static int frame = 0;
   while (1) {
     //if (++frame % 100 == 0) {
     //  printf("Core1 alive: %d\n", frame);
     //}
-  	if( JPEG_override == 0) {
 	    if (autoUpdate){
 	      pColorUpdate(frameBuff,DISPLAY_HEIGHT*DISPLAY_WIDTH, LUT);
 	    }     
-  	}
     sleep_ms(5); 
 
   }
 }
 
 static void core1_singleShot(void){
-  if( JPEG_override == 0) {
       pColorUpdate(frameBuff,DISPLAY_HEIGHT*DISPLAY_WIDTH, LUT);
-  }
   oneShotisDone=true;
 }
 
@@ -378,10 +367,6 @@ static mp_obj_t pd_setLUT(mp_obj_t LUT_obj){
 static MP_DEFINE_CONST_FUN_OBJ_1(setLUT_obj, pd_setLUT);
 
 static mp_obj_t startAutoUpdate(void){
-    if( JPEG_override == 1) {
-      return mp_const_true;
-    }
- 
   autoUpdate = true;
   multicore_reset_core1();
   multicore_launch_core1_with_stack(core1_main, core1_stack, CORE1_STACK_SIZE);
@@ -391,9 +376,6 @@ static MP_DEFINE_CONST_FUN_OBJ_0(startAutoUpdate_obj, startAutoUpdate);
 
 
 static mp_obj_t stopAutoUpdate(void){
-  if( JPEG_override == 1) {
-    return mp_const_true;
-  }
   autoUpdate = false;
   multicore_reset_core1();
   //wait until possible dma is done
@@ -428,9 +410,6 @@ static void command(uint8_t com, size_t len, const char *data) {
 
 
 static mp_obj_t pd_update(mp_obj_t core){
-    if( JPEG_override == 1) {
-      return mp_const_true;
-    }
     int coreNum = mp_obj_get_int(core);
     if (autoUpdate==false){//only work when autoUpdate is false
       if (coreNum == 0){
@@ -457,180 +436,6 @@ static mp_obj_t pd_isScreenUpdateDone(void){
     }
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(pd_isScreenUpdateDone_obj, pd_isScreenUpdateDone);
-
-/* JPEGDEC support functions.  start */
-#define DISPLAY_HEIGHT2 (480)
-
-static uint8_t JPEG_mode = 255;
-static uint8_t JPEG_Drawpage = 0;
-static uint8_t JPEG_Viewpage = 0;
-static uint8_t JPEG_dma = 0;
-
-static void JPEGSetWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
-	if (x0 > x1 || (y0 > y1)) {
-        return;
-    }
-	if( x1 >= DISPLAY_WIDTH) {
-		x1 = DISPLAY_WIDTH - 1;
-	}
-    if (y1 >= DISPLAY_HEIGHT2) {
-		y1 = DISPLAY_HEIGHT2 - 1;
-    }
-
-    uint8_t bufx[4] = {x0 >> 8, x0 & 0xFF, x1 >> 8, x1 & 0xFF};
-    uint8_t bufy[4] = {y0 >> 8, y0 & 0xFF, y1 >> 8, y1 & 0xFF};
-	command(CASET, 4, (const char *)bufx);
-	command(RASET, 4, (const char *)bufy);
-}
-
-uint8_t JPEGGetMode() {
-	return JPEG_mode;
-}
-
-void JPEGSetDrawPage(uint8_t page) { // page must be 1 or 2
-	JPEG_Drawpage = page;
-}
-
-uint8_t JPEGGetViewPage() {
-	return JPEG_Viewpage;
-}
-static void JPEGWaitDma(){
-	if ( JPEG_dma != 0) {
-		while (dma_channel_is_busy(st_dma)) {};
-	    while (spi_get_hw(SPI_DISP)->sr & SPI_SSPSR_BSY_BITS) {
-	      tight_loop_contents();  
-	    }
-	    gpio_put(CS_PIN, 1);
-		JPEG_dma = 0;
-	}
-}
-static void JPEGCleanVRAM() {
-	command(CASET,4,"\x00\x00\x01\x3F");    // CA 0-320
-    command(RASET,4,"\x00\x00\x01\xDF");    // RA 0-479
-	memset((uint8_t *)lineBuffA, 0xff, 64 * 2);
-	while (dma_channel_is_busy(st_dma)) {};
-    uint8_t cmd = RAMWR;
-    gpio_put(CS_PIN, 0);
-    gpio_put(DC_PIN, 0); // command mode
-    
-    spi_write_blocking(SPI_DISP,&cmd, 1);
-
-    gpio_put(DC_PIN, 1); // data mode
-	for ( int i = 0; i < (DISPLAY_WIDTH / 64 ) * DISPLAY_HEIGHT2; i++){
-		while (dma_channel_is_busy(st_dma)) {};
-	    Write_dma((const uint8_t *)lineBuffA,64*2);
-	}
-	
-    while (dma_channel_is_busy(st_dma));
-    while (spi_get_hw(SPI_DISP)->sr & SPI_SSPSR_BSY_BITS) {
-      tight_loop_contents();  
-    }
-    command(RASET,4,"\x00\x00\x01\x3F");    // RA 0-320
-    gpio_put(CS_PIN, 1);    
-}
-
-
-#define JPEGVIEWTYPE (0) // 0: top, 1: center
-
-void JPEGSetViewPage(uint8_t newpage) {
-	JPEGWaitDma();
-	if( newpage == 0) {		// return to normal display
-		command(DISPOFF,0,NULL);
-		command(NORON,0,NULL);
-		command(DISPON,0,NULL);
-		JPEG_Viewpage = 0;
-	} else {	// change to partial display
-		if( JPEG_mode != 1) {
-			JPEGCleanVRAM();
-			command(VSCRDEF, 6, "\x00\x00\x01\xF0\x00\x00");    // 0,480,0
-#if JPEGVIEWTYPE == 0
-			command(PLTAR,4,"\x00\x00\x00\xEF");                // 0,239
-#else
-			command(PLTAR,4,"\x00\x28\x01\x17");                // 40,279
-#endif
-			command(PTLON,0,NULL);
-		}
-		if( newpage == 1) {
-#if JPEGVIEWTYPE == 0
-			command(VSCRSADD, 2, "\x00\x0");                    // for page1
-#else
-			command(VSCRSADD, 2, "\x01\xb8");                   // -40line for page1
-#endif
-			JPEG_Viewpage = 1;
-		} else {
-#if JPEGVIEWTYPE == 0
-			command(VSCRSADD, 2, "\x00\xf0");                   // 240 line for page2
-#else
-			command(VSCRSADD, 2, "\x00\xc8");                   // 240-40 line for page2
-#endif
-			JPEG_Viewpage = 2;
-		}
-	}
-
-}
-
-
-void JPEGModeEnd() {
-	JPEGWaitDma();
-	command(CASET,4,"\x00\x00\x01\x3F");	// default
-    command(RASET,4,"\x00\x00\x01\x3F");	// default
-	JPEG_mode = 0;
-	JPEG_override = 0;
-}
-
-void JPEGModeStart(uint8_t mode) {
-	JPEGWaitDma();
-	if( JPEG_override == 0) {
-		JPEG_override = 1;
-		if( mode == 0){
-			JPEGSetViewPage(0);
-			JPEG_mode = 0;
-		} else {
-			if( JPEG_mode == 255) {		// initialize view page
-				JPEGSetViewPage(1);
-				JPEGSetDrawPage(1);
-			}
-			JPEG_mode = 1;
-		}
-	}
-
-}
-
-void JPEGUpdate(uint16_t *pBuf, uint16_t x,  uint16_t y,  uint16_t w,  uint16_t h) {
-	JPEGWaitDma();
-
-	if( JPEG_mode == 0) {
-		JPEGSetWindow(x, y, MIN(x + w, DISPLAY_WIDTH) - 1, MIN(y + h, DISPLAY_HEIGHT) - 1);
-	} else {
-		if (JPEG_Drawpage == 1) {
-			JPEGSetWindow(x, y, MIN(x + w, DISPLAY_WIDTH) - 1, MIN(y + h, DISPLAY_HEIGHT2 / 2) - 1);
-		} else {
-			JPEGSetWindow(x, y + DISPLAY_HEIGHT2 / 2, MIN(x + w,DISPLAY_WIDTH) - 1, MIN(y + h,DISPLAY_HEIGHT2 / 2) - 1 + DISPLAY_HEIGHT2 / 2);
-		}
-	}
-    uint8_t cmd = RAMWR;
-    gpio_put(CS_PIN, 0);
-    gpio_put(DC_PIN, 0); // command mode
-    
-    spi_write_blocking(SPI_DISP,&cmd, 1);
-
-    gpio_put(DC_PIN, 1); // data mode
-    int bsize = MIN(DISPLAY_WIDTH - x, w);
-	if ( JPEG_mode == 0) {
-		bsize *=  MIN(DISPLAY_HEIGHT - y, h);
-	} else {
-		bsize *=  MIN(DISPLAY_HEIGHT2 / 2 - y, h);
-	}
-	bsize *= 2; /* byte per pixel */
-
-    Write_dma((const uint8_t*)pBuf, bsize);
-	JPEG_dma = 1;
-}
-void JPEGGetDisp(uint16_t *w, uint16_t *h){
-	*w = DISPLAY_WIDTH;
-	*h = DISPLAY_HEIGHT;
-}
-/* JPEGDEC support functions.  end */
 
 void RGB565Update(uint8_t *frameBuff,uint32_t length,const uint16_t *LUT) {
     //gpio_put(CS_PIN, 1);
