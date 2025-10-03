@@ -9,7 +9,8 @@ Add RGB565 support for VT100 terminal (Tested on Pico2W)
 
 ## Fixed glitchs
 Improve stability when uploading file with Thonny.\
-To speed up SDcard (SDcard baudrate is set correctly)
+To speed up SDcard (SDcard baudrate is set correctly).\
+To prevent buffer overrun with terminal.
 
 ## Build Instructions
 In my system something is going wrong with original instruction.\
@@ -52,6 +53,10 @@ try:
     #pc_sd = PicoSD()
     pc_sd = PicoSD(baudrate=5_000_000)
 ```
+---
+
+### Prevent buffer overrun failure with terminal putchar.
+- When micropython putchar to bottom line of the terminal, some function(not identified) calls fill_rect_4bpp() with invalid parameter.  So it writes to python variable memory, and micropython hangs.  Check its parameter before writing memory in vtterminal.c .
 
 ---
 
