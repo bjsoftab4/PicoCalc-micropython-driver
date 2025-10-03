@@ -1581,13 +1581,16 @@ static void scroll_framebuffer(uint8_t *fb, int scroll_y1, int scroll_y2, int n,
     }
 }
 */
-//	add display mode for RGB565 and more
+// add display mode for RGB565 and more
 static void fill_rect_16bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
-	
+
     int row_bytes = SC_PIXEL_WIDTH << 1;  
-	uint16_t fill_word = defaultLUT[color & 0xf];
+    uint16_t fill_word = defaultLUT[color & 0xf];
     for (int row = y; row < y + h; row++) {
-    	uint16_t *row_ptr = (uint16_t *)(fb + row * row_bytes);
+        if ( row >= SC_PIXEL_HEIGHT) {
+            break;
+        }
+        uint16_t *row_ptr = (uint16_t *)(fb + row * row_bytes);
         int pos = x;
         int pixels_to_fill = w;
         uint16_t *ptr = row_ptr + pos;
@@ -1598,12 +1601,15 @@ static void fill_rect_16bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t co
     }
 }
 
-	
+
 static void fill_rect_8bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
-	
+
     int row_bytes = SC_PIXEL_WIDTH;  
     for (int row = y; row < y + h; row++) {
-    	uint8_t *row_ptr = (uint8_t *)(fb + row * row_bytes);
+        if ( row >= SC_PIXEL_HEIGHT) {
+            break;
+        }
+        uint8_t *row_ptr = (uint8_t *)(fb + row * row_bytes);
         int pos = x;
         int pixels_to_fill = w;
         uint8_t *ptr = row_ptr + pos;
@@ -1617,28 +1623,31 @@ static void fill_rect_8bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t col
 static void fill_rect_2bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
     int row_bytes = SC_PIXEL_WIDTH >> 2;  
     int pos = x;
-	int skippix = (pos & 0x3);
-	uint8_t maskbit = 0xff << (skippix * 2);	// pos =1 の時 pixel xccc にセットする  bitmask は色をセットする部分 1110 （エンディアン逆)
-	uint8_t cbit = (color >> 2)& 0x3;
-	uint8_t fill_byte = (cbit << 6) |(cbit << 4) | (cbit << 2) | cbit;
-	uint8_t fillbit = fill_byte & maskbit;
+    int skippix = (pos & 0x3);
+    uint8_t maskbit = 0xff << (skippix * 2); // pos =1 の時 pixel xccc にセットする  bitmask は色をセットする部分 1110 （エンディアン逆)
+    uint8_t cbit = (color >> 2)& 0x3;
+    uint8_t fill_byte = (cbit << 6) |(cbit << 4) | (cbit << 2) | cbit;
+    uint8_t fillbit = fill_byte & maskbit;
 
     int pixels_to_fill = w;
-	pixels_to_fill -= skippix;
+    pixels_to_fill -= skippix;
     int remaining_pixels = pixels_to_fill & 3; 
 
-	for (int row = y; row < y + h; row++) {
+    for (int row = y; row < y + h; row++) {
+        if ( row >= SC_PIXEL_HEIGHT) {
+            break;
+        }
         uint8_t *row_ptr = fb + row * row_bytes;
         uint8_t *ptr = row_ptr + (pos >> 2);
 
-		if( skippix != 0) {
+        if( skippix != 0) {
             *ptr = (*ptr & ~(maskbit)) | fillbit;
-			ptr ++;
-		}
-		int full_bytes = pixels_to_fill >> 2;      
+            ptr ++;
+        }
+        int full_bytes = pixels_to_fill >> 2;      
         while (full_bytes > 0) {
             *ptr++ = fill_byte;
-        	full_bytes -= 1;
+            full_bytes -= 1;
         }
         if (remaining_pixels) {
             uint8_t maskbit2 = 0xff >> ((4-remaining_pixels) * 2);
@@ -1650,28 +1659,31 @@ static void fill_rect_2bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t col
 static void fill_rect_1bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
     int row_bytes = SC_PIXEL_WIDTH >> 3;  
     int pos = x;
-	int skippix = (pos & 0x7);
-	uint8_t maskbit = 0xff << skippix;
-	uint8_t fill_byte = 0;
-	if (color != 0) fill_byte = 0xff;
-	uint8_t fillbit = fill_byte & maskbit;
+    int skippix = (pos & 0x7);
+    uint8_t maskbit = 0xff << skippix;
+    uint8_t fill_byte = 0;
+    if (color != 0) fill_byte = 0xff;
+    uint8_t fillbit = fill_byte & maskbit;
 
     int pixels_to_fill = w;
-	pixels_to_fill -= skippix;
+    pixels_to_fill -= skippix;
     int remaining_pixels = pixels_to_fill & 7; 
 
-	for (int row = y; row < y + h; row++) {
+    for (int row = y; row < y + h; row++) {
+        if ( row >= SC_PIXEL_HEIGHT) {
+            break;
+        }
         uint8_t *row_ptr = fb + row * row_bytes;
         uint8_t *ptr = row_ptr + (pos >> 3);
 
-		if( skippix != 0) {
+        if( skippix != 0) {
             *ptr = (*ptr & ~(maskbit)) | fillbit;
-			ptr ++;
-		}
-		int full_bytes = pixels_to_fill >> 3;      
+            ptr ++;
+        }
+        int full_bytes = pixels_to_fill >> 3;      
         while (full_bytes > 0) {
             *ptr++ = fill_byte;
-        	full_bytes -= 1;
+            full_bytes -= 1;
         }
         if (remaining_pixels) {
             uint8_t maskbit2 = 0xff >> (8-remaining_pixels);
@@ -1681,27 +1693,33 @@ static void fill_rect_1bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t col
 }
 
 static void fill_rect_4bpp(uint8_t *fb,  int x, int y, int w, int h, uint8_t color){
+    if ( x + w > SC_PIXEL_WIDTH) {
+        return;
+    }
     switch (pixel_mode){
       case FRAMEBUF_RGB565: //565
         fill_rect_16bpp(fb, x, y, w, h, color);
-    	return;
+        return;
       default:
       case FRAMEBUF_GS4_HMSB: //16 color
         break;
       case FRAMEBUF_MHMSB: //2 color
         fill_rect_1bpp(fb, x, y, w, h, color);
-    	return;
+        return;
       case FRAMEBUF_GS2_HMSB: //4 color
         fill_rect_2bpp(fb, x, y, w, h, color);
-    	return;
+        return;
       case FRAMEBUF_GS8: //256 color
         fill_rect_8bpp(fb, x, y, w, h, color);
-    	return;
+        return;
     }
-	
+    
     int row_bytes = SC_PIXEL_WIDTH >> 1;  
     uint8_t fill_byte = (color << 4) | (color & 0x0F);
     for (int row = y; row < y + h; row++) {
+        if ( row >= SC_PIXEL_HEIGHT) {
+            break;
+        }
         uint8_t *row_ptr = fb + row * row_bytes;
         int pos = x;
         int pixels_to_fill = w;
@@ -1737,24 +1755,24 @@ static mp_obj_t vtterminal_init(mp_obj_t fb_obj){
     mp_get_buffer_raise(fb_obj, &buf_info, MP_BUFFER_READ);
     fb=(uint8_t *)buf_info.buf;
     // Detect display mode RGB565 and more
-	switch( (int)buf_info.len ) {
-		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT * 2:
-			pixel_mode = FRAMEBUF_RGB565;
-			break;
-		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT:
-			pixel_mode = FRAMEBUF_GS8;
-			break;
-		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT /2:
-		default:
-			pixel_mode = FRAMEBUF_GS4_HMSB;
-			break;
-		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT/4:
-			pixel_mode = FRAMEBUF_GS2_HMSB;
-			break;
-		case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT/8:
-			pixel_mode = FRAMEBUF_MHMSB;
-			break;
-	}
+    switch( (int)buf_info.len ) {
+        case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT * 2:
+            pixel_mode = FRAMEBUF_RGB565;
+            break;
+        case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT:
+            pixel_mode = FRAMEBUF_GS8;
+            break;
+        case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT /2:
+        default:
+            pixel_mode = FRAMEBUF_GS4_HMSB;
+            break;
+        case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT/4:
+            pixel_mode = FRAMEBUF_GS2_HMSB;
+            break;
+        case SC_PIXEL_WIDTH * SC_PIXEL_HEIGHT/8:
+            pixel_mode = FRAMEBUF_MHMSB;
+            break;
+    }
 
     currentTextTable=G0TABLE;
     resetToInitialState();
