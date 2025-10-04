@@ -13,6 +13,8 @@ To speed up SDcard (SDcard baudrate is set correctly).\
 To prevent buffer overrun with terminal.
 
 ## Build Instructions
+At first, copy files from pico_files/modules to your micropython build environment, micropython/ports/rp2/modules.
+
 In my system something is going wrong with original instruction.\
 I added micropython.cmake in parent directory.  And use make insted of cmake.
 ```sh
@@ -26,8 +28,10 @@ Supported `TARGET_BOARD` values:
 - `RPI_PICO2`
 - `RPI_PICO2_W`  (tested)
 
----
+At last, copy file pico_files/root/boot.py to your picocalc root directory.
 
+
+---
 ## Features (Modified)
 
 ### VT100 Emulator Mode
