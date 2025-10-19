@@ -11,7 +11,8 @@ Add RGB565 support for VT100 terminal (Tested on Pico2W)
 Improve stability when uploading file with Thonny.\
 To speed up SDcard (SDcard baudrate is set correctly).\
 To speed up SDcard (SDcard wait time change 1ms to 20us).\
-To prevent buffer overrun with terminal.
+To prevent buffer overrun with terminal.\
+To avoid Thonny hangs.
 
 ## Build Instructions
 At first, copy files from pico_files/modules to your micropython build environment, micropython/ports/rp2/modules.
@@ -59,12 +60,19 @@ try:
     pc_sd = PicoSD(baudrate=5_000_000)
 ```
 ---
+
 ### SDcard wait time
 - Original sdcard.py wait for response of SDcard.  But its time is 1ms, it causes slow accessing.
+
+---
 
 ### Prevent buffer overrun failure with terminal putchar.
 - When micropython putchar to bottom line of the terminal, some function(not identified) calls fill_rect_4bpp() with invalid parameter.  So it writes to python variable memory, and micropython hangs.  Check its parameter before writing memory in vtterminal.c .
 
+---
+
+### To avoid Thonny hangs.
+- Thonny hangs with error.  PROBLEM IN THONNY'S BACK-END: Internal error (thonny.plugins.micropython.mp_back.ProtocolError: Unexpected read during raw paste).  Disable os.dupterm() when USB connected in boot.py
 ---
 
 ## Credits
