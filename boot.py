@@ -3,6 +3,7 @@ from picocalc import PicoDisplay, PicoKeyboard, PicoSD, PicoSpeaker
 import os
 import vt
 import sys
+import machine
 # Separated imports because Micropython is super finnicky
 from picocalc_system import run, files, memory, disk
 
@@ -39,7 +40,16 @@ try:
         return pye_edit(args, tab_size=tab_size, undo=undo, io_device=pc_terminal)
     picocalc.edit = edit
 
+    SIE_STATUS_REG = 0x50110000 + 0x50
+    SIE_CONNECTED  = 1 << 16
+    SIE_SUSPENDED  = 1 << 4
+    usbConnected   = (machine.mem32[SIE_STATUS_REG] & (SIE_CONNECTED | SIE_SUSPENDED)) == SIE_CONNECTED
+
+    if not usbConnected:
     os.dupterm(pc_terminal)
+    else:
+        pass
+
     pc_sd.check_mount()
     #usb_debug("boot.py done.")
 
@@ -50,4 +60,4 @@ except Exception as e:
         os.dupterm(None).write(b"[boot.py error]\n")
     except:
         pass
-    
+
