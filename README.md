@@ -12,7 +12,9 @@ Improve stability when uploading file with Thonny.\
 To speed up SDcard (SDcard baudrate is set correctly).\
 To speed up SDcard (SDcard wait time change 1ms to 20us).\
 To prevent buffer overrun with terminal.\
-To avoid Thonny hangs.
+To avoid Thonny hangs.\
+To avoid hangs after multiple softreset.\
+Fix cursor blink timing after softreset.
 
 ## Build Instructions
 At first, copy files from pico_files/modules to your micropython build environment, micropython/ports/rp2/modules.
@@ -73,6 +75,12 @@ try:
 
 ### To avoid Thonny hangs.
 - Thonny hangs with error.  PROBLEM IN THONNY'S BACK-END: Internal error (thonny.plugins.micropython.mp_back.ProtocolError: Unexpected read during raw paste).  Disable os.dupterm() when USB connected in boot.py
+---
+### To avoid hangs after multiple softreset.
+- Soft reset with Ctrl+D or Thonny stop/restart button cause hang micropython after repeating 12 or 16 times.  Release DMA channel after soft reset in picodisplay.c
+---
+### Fix cursor blink timing after softreset.
+- After soft reset, cursor blink timing is unstable.  Stop interval timer after soft reset in vtterminal.c
 ---
 
 ## Credits
